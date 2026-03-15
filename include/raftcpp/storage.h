@@ -33,4 +33,4 @@ private:
 
 }
 
-#endif  // RAFTCPP_INCLUDE_RAFTCPP_STORAGE_H_
+#endif  // RAFTCPP_INCLUDE_RAFTCPP_STORAGE_H_`
