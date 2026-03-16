@@ -16,8 +16,6 @@ struct HardState {
 
 class Storage {
 public:
-
-private:    
     virtual ~Storage() = default;
 
     virtual HardState GetHardState() const = 0;

@@ -21,7 +21,7 @@ class Node {
 public:
     Node(Config config, std::unique_ptr<Storage> storage, 
         std::unique_ptr<StateMachine> state_machine);
-    void Trick();
+    void Tick();
     void Step(const Message& messgae);
     bool Propose(const std::string& command);
     std::vector<Message> DrainMessages();
@@ -35,7 +35,28 @@ public:
     std::optional<LogEntry> GetLogEntry(LogIndex index) const;
     const StateMachine& state_machine() const { return *state_machine_; } 
 private:
+    void ResetElectionTimer();
+    void ResetHeartbeatTimer();
+    void StartElection();
+    void BecomeFollower(Term new_term, NodeId leader_id);
+    void BecomeLeader();
+
+    void HandleRequestVote(const Message& message);
+    void HandleRequestVoteResponse(const Message& message);
+    void HandleAppendEntries(const Message& message);
+    void HandleAppendEntriesResponse(const Message& message);
+
+    void SendRequestVotes();
+    void SendHeartbeats();
+    void ReplicateTo(NodeId peer_id);
+    Message BuildAppendEntries(NodeId peer_id) const;
+    void AdvanceCommitIndex();
+    void ApplyCommitEntries();
+
+    bool IsCandidateLogUpDate(LogIndex candidate_last_log_index, Term candidate_last_log_term) const;
+    bool HasMajority(std::size_t count) const;
     bool IsMember(NodeId node_id) const;
+    void QueueMessage(const Message& message);
 
     Config config_;
     std::unique_ptr<Storage> storage_;
@@ -45,9 +66,9 @@ private:
     NodeId leader_id_ = kInvalidNodeId;
     LogIndex commit_index_ = 0;
     LogIndex last_applied_ = 0;
-    int election_elapsed_ticks = 0;
-    int heartbeat_elapsed_ticks = 0;
-    int randomized_election_timeout_ticks = 0;
+    int election_elapsed_ticks_ = 0;
+    int heartbeat_elapsed_ticks_ = 0;
+    int randomized_election_timeout_ticks_ = 0;
     std::mt19937_64 rng_;
     std::set<NodeId> votes_received_;
     std::map<NodeId, LogIndex> next_index_;
