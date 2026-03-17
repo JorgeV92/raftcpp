@@ -122,6 +122,94 @@ void Node::StartElection() {
         BecomeLeader();
 }
 
+void Node::BecomeFollower(Term new_term, NodeId leader_id) {
+  if (new_term < hard_state_.current_term) {
+    return;
+  }
+  if (new_term > hard_state_.current_term) {
+    hard_state_.current_term = new_term;
+    hard_state_.voted_for.reset();
+    storage_->SetHardState(hard_state_);
+  }
+  role_ = Role::kFollower;
+  leader_id_ = leader_id;
+  votes_received_.clear();
+  ResetElectionTimer();
+  ResetHeartbeatTimer();
+}
+
+void Node::BecomeLeader() {
+  role_ = Role::kLeader;
+  leader_id_ = id();
+  votes_received_.clear();
+  ResetHeartbeatTimer();
+
+  next_index_.clear();
+  match_index_.clear();
+  const LogIndex next = last_log_index() + 1;
+  for (NodeId peer_id : config_.member_ids) {
+    next_index_[peer_id] = next;
+    match_index_[peer_id] = 0;
+  }
+  match_index_[id()] = last_log_index();
+  next_index_[id()] = last_log_index() + 1;
+
+  SendHeartbeats();
+}
+
+void Node::HandleRequestVote(const Message& message) {
+  Message response;
+  response.type = MessageType::kRequestVoteResponse;
+  response.from = id();
+  response.to = message.from;
+  response.term = hard_state_.current_term;
+  response.vote_granted = false;
+
+  if (message.term < hard_state_.current_term) {
+    QueueMessage(response);
+    return;
+  }
+
+  if (message.term > hard_state_.current_term) {
+    BecomeFollower(message.term, kInvalidNodeId);
+    response.term = hard_state_.current_term;
+  }
+
+  const bool can_vote = !hard_state_.voted_for.has_value() ||
+                        hard_state_.voted_for.value() == message.from;
+  const bool up_to_date =
+      IsCandidateLogUpToDate(message.last_log_index, message.last_log_term);
+
+  if (can_vote && up_to_date) {
+    hard_state_.voted_for = message.from;
+    storage_->SetHardState(hard_state_);
+    ResetElectionTimer();
+    response.vote_granted = true;
+  }
+
+  QueueMessage(response);
+}
+
+void Node::HandleRequestVoteResponse(const Message& message) {
+  if (role_ != Role::kCandidate) {
+    return;
+  }
+  if (message.term < hard_state_.current_term) {
+    return;
+  }
+  if (message.term > hard_state_.current_term) {
+    BecomeFollower(message.term, kInvalidNodeId);
+    return;
+  }
+  if (!message.vote_granted) {
+    return;
+  }
+
+  votes_received_.insert(message.from);
+  if (HasMajority(votes_received_.size())) {
+    BecomeLeader();
+  }
+}
 
 bool Node::IsMember(NodeId node_id) const {
     return std::find(config_.member_ids.begin(), config_.member_ids.end(), node_id) != config_.member_ids.end();

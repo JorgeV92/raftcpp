@@ -11,7 +11,7 @@ namespace raftcpp {
 
 struct HardState {
     Term current_term = 0;
-    std::optional<NodeId> vorted_for;
+    std::optional<NodeId> voted_for;
 };
 
 class Storage {
